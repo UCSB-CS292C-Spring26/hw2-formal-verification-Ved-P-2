@@ -15,8 +15,8 @@ def part_a():
     x, y, z = Ints('x y z')
     s = Solver()
 
-    # TODO: Add constraints
-    # s.add(...)
+    # Add constraints
+    s.add(x + 2 * y == z, z > 10, x > 0, y > 0)
 
     print("=== Part (a) ===")
     if s.check() == sat:
@@ -36,8 +36,8 @@ def part_b():
     x = Int('x')
     s = Solver()
 
-    # TODO: Add the *negation* of the formula and check UNSAT
-    # s.add(...)
+    # Add the *negation* of the formula and check UNSAT
+    s.add(x > 5, x <= 3)
 
     print("=== Part (b) ===")
     result = s.check()
@@ -67,8 +67,8 @@ def part_c():
     f = Function('f', S, S)
     s = Solver()
 
-    # TODO: Add the three constraints
-    # s.add(...)
+    # Add the three constraints
+    s.add(f(f(x)) == x, f(f(f(x))) == x, f(x) != x)
 
     print("=== Part (c) ===")
     result = s.check()
@@ -76,7 +76,27 @@ def part_c():
         print(f"SAT: {s.model()}")
     else:
         print("UNSAT")
-    # TODO: Add Z3 derivation steps below (see STEP 2 above).
+
+    # Add Z3 derivation steps below (see STEP 2 above).
+
+    print("Step 1: show that f(f(x)) = x implies f(f(f(x))) = f(x)")
+    s1 = Solver()
+    s1.add(f(f(x)) == x, f(f(f(x))) != f(x))
+    if s1.check() == unsat:
+        print("Step 1 of derivation is correct.")
+
+    print("Step 2: show that f(f(f(x))) = f(x) and f(f(f(x))) = x implies f(x) = x")
+    s1 = Solver()
+    s1.add(f(f(f(x))) == f(x), f(f(f(x))) == x, f(x) != x)
+    if s1.check() == unsat:
+        print("Step 2 of derivation is correct.")
+
+    print("Step 3: show that f(x) = x and f(x) ≠ x is UNSAT")
+    s1 = Solver()
+    s1.add(f(x) == x, f(x) != x)
+    if s1.check() == unsat:
+        print("Step 3 of derivation proves the claim is unsatisfiable.")
+
     print()
 
 
@@ -98,18 +118,35 @@ def part_d():
 
     # Axiom 1: Read-over-write HIT
     s1 = Solver()
-    # TODO: Negate axiom 1 and check UNSAT
-    # s1.add(...)
+    # Negate axiom 1 and check UNSAT
+    s1.add(i == j, Select(Store(a, i, v), j) != v)
     r1 = s1.check()
     print(f"Axiom 1 (hit):  {'Valid' if r1 == unsat else 'INVALID'}")
 
     # Axiom 2: Read-over-write MISS
     s2 = Solver()
-    # TODO: Negate axiom 2 and check UNSAT
-    # s2.add(...)
+    # Negate axiom 2 and check UNSAT
+    s2.add(i != j, Select(Store(a, i, v), j) != Select(a, j))
     r2 = s2.check()
     print(f"Axiom 2 (miss): {'Valid' if r2 == unsat else 'INVALID'}")
     print()
+
+    # Response to EXPLAIN prompt:
+    # The reason these two axioms are fully sufficient to characterize the
+    # behavior of Select and Store is that the axioms, which consider the
+    # premises i == j and i != j respectively, account for the entire premise
+    # space. There is no possible initial condition that cannot be
+    # represented by one of these axioms. (We ignore the fact that axioms
+    # don't tell us what to do in the case that we have a Select with no
+    # Store inside; we can assume this is defined elsewhere.) Another way of
+    # thinking about this is, supposed we have a Select() statement with a
+    # bunch of Selects and Stores inside of its parameters. By induction, we
+    # can simplify the internal Selects into a single value or expression.
+    # Then, we know for sure that either axiom 1 or axiom 2 applies. Either
+    # way, the number of Store calls goes down by 1. Inductively, we can
+    # always apply an axiom and simply the expression until we get to a
+    # specific value (the most recent stored at that index) or a single
+    # Select call (querying the initial value at that index).
 
 
 # ---------------------------------------------------------------------------
