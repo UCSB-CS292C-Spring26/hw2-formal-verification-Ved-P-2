@@ -143,36 +143,38 @@ def wp(stmt: Stmt, Q: BoolRef) -> BoolRef:
     Compute the weakest precondition of `stmt` w.r.t. postcondition `Q`.
     For while loops, append side VCs to the global `side_vcs` list.
 
-    TODO: Implement all six cases.
+    Implement all six cases.
     """
     global side_vcs
 
     match stmt:
         case Assign(var, expr):
-            # TODO: Q[var ↦ expr]
-            pass
+            return z3_substitute_var(Q, var, aexp_to_z3(expr))
 
         case Seq(s1, s2):
-            # TODO
-            pass
+            return wp(s1, wp(s2, Q))
 
         case If(cond, s1, s2):
-            # TODO
-            pass
+            b = bexp_to_z3(cond)
+            return And(Implies(b, wp(s1, Q)), Implies(Not(b), wp(s2, Q)))
 
         case While(cond, inv, body):
-            # TODO: Return I. Generate two side VCs:
+            #   Return I. Generate two side VCs:
             #   preservation: I ∧ b → wp(body, I)
             #   postcondition: I ∧ ¬b → Q
-            pass
+            b = bexp_to_z3(cond)
+            I = bexp_to_z3(inv)
+            side_vcs += Implies(And(I, b), wp(body, I))
+            side_vcs += Implies(And(I, Not(b)), Q)
+            return I
 
         case Assert(cond):
-            # TODO
-            pass
+            C = bexp_to_z3(cond)
+            return And(C, Q)
 
         case Assume(cond):
-            # TODO
-            pass
+            C = bexp_to_z3(cond)
+            return Implies(C, Q)
 
         case _:
             raise ValueError(f"Unknown statement: {stmt}")
@@ -192,9 +194,24 @@ def verify(pre: BExp, stmt: Stmt, post: BExp, label: str = "Program"):
     pre_z3 = bexp_to_z3(pre)
     post_z3 = bexp_to_z3(post)
 
-    # TODO
     print(f"=== {label} ===")
-    print("  TODO: implement verify()")
+
+    weakest_precondition = wp(stmt, post_z3)
+
+    s = Solver()
+    s.add(pre_z3, Not(weakest_precondition))
+    if s.check() == sat:
+        print(f"The Hoare triple for {label} is not correct.")
+        return
+
+    for vc in side_vcs:
+        s = Solver()
+        s.add(Not(vc))
+        if s.check() == sat:
+            print(f"The Hoare triple for {label} is not correct.")
+            return
+
+    print(f"The Hoare triple for {label} has been verified!")
     print()
 
 
@@ -375,27 +392,54 @@ def test_wp_derivation():
     """
     print("=== Part (a): WP Derivation ===")
 
-    # TODO: Build the IMP AST for the program above
-    # stmt = Seq(Assign('x', ...), If(...))
-    # post = Compare('>', Var('y'), IntConst(0))
+    # Build the IMP AST for the program above
+    stmt = Seq(
+        Assign('x', BinOp('+', Var('x'), IntConst(1))),
+        If(Compare('>', Var('x'), IntConst(0)), Assign('y', BinOp('*', Var('x'), IntConst(2))), Assign('y', BinOp('-', IntConst(0), Var('x'))))
+    )
+    post = Compare('>', Var('y'), IntConst(0))
 
-    # TODO: Compute wp(stmt, post_z3) and print it
-    # wp_result = wp(stmt, bexp_to_z3(post))
-    # print(f"  wp = {wp_result}")
+    # Compute wp(stmt, post_z3) and print it
+    wp_result = wp(stmt, bexp_to_z3(post))
+    print(f"  wp = {wp_result}")
 
-    # TODO: For each candidate precondition, check if pre → wp is valid
-    # candidates = [
-    #     ("x >= 0",  z3_var('x') >= 0),
-    #     ("x >= -1", z3_var('x') >= -1),
-    #     ("x == -1", z3_var('x') == -1),
-    # ]
-    # for name, pre in candidates:
-    #     s = Solver()
-    #     s.add(Not(Implies(pre, wp_result)))
-    #     result = s.check()
-    #     valid = (result == unsat)
-    #     print(f"  {name}: {'VALID' if valid else 'INVALID'}")
-    #     # [EXPLAIN] in a comment: why is this precondition valid or invalid?
+    # For each candidate precondition, check if pre → wp is valid
+    candidates = [
+        ("x >= 0",  z3_var('x') >= 0),
+        ("x >= -1", z3_var('x') >= -1),
+        ("x == -1", z3_var('x') == -1),
+    ]
+    for name, pre in candidates:
+        s = Solver()
+        s.add(Not(Implies(pre, wp_result)))
+        result = s.check()
+        valid = (result == unsat)
+        print(f"  {name}: {'VALID' if valid else 'INVALID'}")
+
+        # [EXPLAIN] in a comment: why is this precondition valid or invalid?
+
+        # Response to EXPLAIN prompt:
+        # To explain the validity of each of the preconditions, we must first
+        # simplify the weakest precondition. Our function returned:
+        # (0 < x+1 -> 0 < 2(x+1)) AND (!(0 < x+1) -> 0 < -(x+1))
+        # Let's simplify this!
+        #
+        # (x > -1 -> x > -1) AND (x <= -1 -> x < -1)
+        # True AND ( !(x <= -1) OR (x < -1) )
+        # x > -1 OR x < -1
+        # x != -1
+        #
+        # We have determined that the weakest precondition is, x != 1.
+        # This makes it very simple to determine whether the given
+        # preconditions are valid!
+        #
+        # x >= 0 is VALID, because if x is non-negative, it is certainly
+        # not equal to -1. Thus, this precondition is a strengthening of
+        # the weakest precondition.
+        #
+        # x >= -1 and x == -1 are both INVALID. x = -1 is a member of both
+        # of these preconditions, but we have shown that if x = -1, the
+        # postcondition is not satisfied.
 
     print("  TODO: implement after Part (b)")
     print()
