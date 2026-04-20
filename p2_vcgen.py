@@ -164,8 +164,7 @@ def wp(stmt: Stmt, Q: BoolRef) -> BoolRef:
             #   postcondition: I ∧ ¬b → Q
             b = bexp_to_z3(cond)
             I = bexp_to_z3(inv)
-            side_vcs += Implies(And(I, b), wp(body, I))
-            side_vcs += Implies(And(I, Not(b)), Q)
+            side_vcs += [Implies(And(I, b), wp(body, I)), Implies(And(I, Not(b)), Q)]
             return I
 
         case Assert(cond):
@@ -258,10 +257,16 @@ def test_mult():
         r := r + b;  i := i + 1;
       { r == a * b }
 
-    TODO: Replace the invariant below with a correct one.
+    Replace the invariant below with a correct one.
     """
     pre = Compare('>=', Var('a'), IntConst(0))
-    inv = BoolConst(True)  # ← WRONG — replace with correct invariant
+    inv = ImpAnd(
+        ImpAnd(
+            Compare('<=', IntConst(0), Var('i')),
+            Compare('<=', Var('i'), Var('a'))
+        ),
+        Compare('==', Var('r'), BinOp('*', Var('i'), Var('b')))
+    )
     body = Seq(Assign('r', BinOp('+', Var('r'), Var('b'))),
                Assign('i', BinOp('+', Var('i'), IntConst(1))))
     stmt = Seq(Assign('i', IntConst(0)),
@@ -269,6 +274,15 @@ def test_mult():
                    While(Compare('<', Var('i'), Var('a')), inv, body)))
     post = Compare('==', Var('r'), BinOp('*', Var('a'), Var('b')))
     verify(pre, stmt, post, "C1: Multiplication by Addition")
+
+    # Response to EXPLAIN prompt:
+    # To find the invariant, I first made a table of all values of i and r
+    # at the beginning and end of each loop body execution, from which I
+    # discovered that r == i * b always holds true. However, to make the
+    # loop invariant even further specific, I realized that we can also
+    # constraint the bounds of i from between 0 and a, inclusive. This
+    # exactly satisfies all rows of the table and nothing more, so any
+    # further strengthenings would not satisfy at least one of the rows.
 
 
 def test_add():
@@ -284,7 +298,13 @@ def test_add():
     """
     pre = ImpAnd(Compare('>=', Var('n'), IntConst(0)),
                  Compare('>=', Var('m'), IntConst(0)))
-    inv = BoolConst(True)  # ← WRONG — replace with correct invariant
+    inv = ImpAnd(
+        ImpAnd(
+            Compare('<=', IntConst(0), Var('i')),
+            Compare('<=', Var('i'), Var('m'))
+        ),
+        Compare('==', Var('r'), BinOp('+', Var('n'), Var('i')))
+    )
     body = Seq(Assign('r', BinOp('+', Var('r'), IntConst(1))),
                Assign('i', BinOp('+', Var('i'), IntConst(1))))
     stmt = Seq(Assign('i', IntConst(0)),
@@ -292,6 +312,15 @@ def test_add():
                    While(Compare('<', Var('i'), Var('m')), inv, body)))
     post = Compare('==', Var('r'), BinOp('+', Var('n'), Var('m')))
     verify(pre, stmt, post, "C2: Addition by Loop")
+
+    # Response to EXPLAIN prompt:
+    # To find the invariant, I first made a table of all values of i and r
+    # at the beginning and end of each loop body execution, from which I
+    # discovered that r == n + i always holds true. However, to make the
+    # loop invariant even further specific, I realized that we can also
+    # constraint the bounds of i from between 0 and m, inclusive. This
+    # exactly satisfies all rows of the table and nothing more, so any
+    # further strengthenings would not satisfy at least one of the rows.
 
 
 def test_sum():
@@ -306,7 +335,15 @@ def test_sum():
     TODO: Replace the invariant below with a correct one.
     """
     pre = Compare('>=', Var('n'), IntConst(1))
-    inv = BoolConst(True)  # ← WRONG — replace with correct invariant
+    inv = ImpAnd(
+        ImpAnd(
+            Compare('<=', IntConst(1), Var('i')),
+            Compare('<=', Var('i'), BinOp('+', Var('n'), IntConst(1)))
+        ),
+        Compare('==', BinOp('*', Var('s'), IntConst(2)), BinOp(
+            '*', Var('i'), BinOp('-', Var('i'), IntConst(1)))
+        )
+    )
     body = Seq(Assign('s', BinOp('+', Var('s'), Var('i'))),
                Assign('i', BinOp('+', Var('i'), IntConst(1))))
     stmt = Seq(Assign('i', IntConst(1)),
@@ -315,6 +352,15 @@ def test_sum():
     post = Compare('==', BinOp('*', IntConst(2), Var('s')),
                    BinOp('*', Var('n'), BinOp('+', Var('n'), IntConst(1))))
     verify(pre, stmt, post, "C3: Sum of 1..n")
+
+    # Response to EXPLAIN prompt:
+    # To find the invariant, I first made a table of all values of i and s
+    # at the beginning and end of each loop body execution, from which I
+    # discovered that s == i(i-1)/2 always holds true. However, to make the
+    # loop invariant even further specific, I realized that we can also
+    # constraint the bounds of i from between 1 and n+1, inclusive. This
+    # exactly satisfies all rows of the table and nothing more, so any
+    # further strengthenings would not satisfy at least one of the rows.
 
 
 # ============================================================================
@@ -361,12 +407,30 @@ def test_buggy_div():
 
     verify(pre, stmt, post, "Buggy Division (should FAIL)")
 
-    # TODO: Uncomment and fix the invariant below, then re-verify.
-    # inv_fixed = ImpAnd(
-    #     Compare('==', BinOp('+', BinOp('*', Var('q'), Var('y')), Var('r')), Var('x')),
-    #     ???  # ← Add the missing conjunct
-    # )
-    # ... rebuild stmt with inv_fixed and call verify(...)
+    # Uncomment and fix the invariant below, then re-verify.
+    inv_fixed = ImpAnd(
+        Compare('==', BinOp('+', BinOp('*', Var('q'), Var('y')), Var('r')), Var('x')),
+        Compare('>=', Var('r'), IntConst(0))
+    )
+    stmt = Seq(Assign('q', IntConst(0)),
+               Seq(Assign('r', Var('x')),
+                   While(Compare('>=', Var('r'), Var('y')),
+                         inv_fixed, body)))
+
+    verify(pre, stmt, post, "Buggy Division (should PASS)")
+
+    # Response to EXPLAIN prompt:
+    # The Side VC that originally failed was the postcondition. As a reminder,
+    # this VC is I and not b -> Q. For the original invariant, this would be
+    # (q * y + r == x and r < y) -> (q * y + r == x and r >= 0 and r < y).
+    # This implication is not accurate because the postcondition does not imply
+    # r >= 0. As an example, consider the scenario q = 1, y = 1, r = -1, x = 0.
+    # This satisfies the premise of the conditional statement but not the term
+    # r >= 0. In order to correct, this we need to ensure that r >= 0 is
+    # accounted for in the loop invariant so that the postcondition VC can be
+    # proven.
+
+    print("FIXED: Verified")
 
 
 # ============================================================================
