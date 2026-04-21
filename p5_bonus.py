@@ -43,7 +43,7 @@ OUTPUT_FILE = 1
 #   ∧ ∀p. p ≠ OUTPUT_FILE → Select(fs_final, p) = Select(fs_initial, p)
 #                                                                  [nothing else changed]
 #
-# TODO: Encode this as a Z3 validity check and verify it.
+# Encode this as a Z3 validity check and verify it.
 # ============================================================================
 
 def verify_correct_composition():
@@ -76,17 +76,20 @@ def verify_correct_composition():
                             Select(fs_final, p) == Select(fs_initial, p)))
     )
 
-    # TODO: Check that (skill_A_post ∧ skill_B_post) → composed_post is valid.
+    # Check that (skill_A_post ∧ skill_B_post) → composed_post is valid.
     # That is, check that the negation is UNSAT.
     s = Solver()
-    # s.add(skill_A_post)
-    # s.add(skill_B_post)
-    # s.add(Not(composed_post))
+    s.add(skill_A_post)
+    s.add(skill_B_post)
+    s.add(Not(composed_post))
 
-    # TODO: uncomment and check
-    # result = s.check()
+    # uncomment and check
+    result = s.check()
 
-    print("  TODO: Implement verification")
+    print("  Implement verification")
+    assert(result == unsat)
+    print("The result was UNSAT.")
+    print("This means that the post conditions of each skill implies the composed postcondition.")
     print()
 
 
@@ -101,7 +104,7 @@ def verify_correct_composition():
 #
 # The composed postcondition should FAIL because the input file is modified.
 #
-# TODO: Encode this and show the counterexample.
+# Encode this and show the counterexample.
 # ============================================================================
 
 def verify_buggy_composition():
@@ -130,12 +133,20 @@ def verify_buggy_composition():
                             Select(fs_final, p) == Select(fs_initial, p)))
     )
 
-    # TODO: Check that the composed postcondition FAILS.
+    # Check that the composed postcondition FAILS.
     # Print the counterexample showing how the input file gets corrupted.
     s = Solver()
-    # s.add(...)
+    s.add(skill_A_post)
+    s.add(buggy_B_post)
+    s.add(Not(composed_post))
 
-    print("  TODO: Implement buggy verification")
+    result = s.check()
+
+    print("  Implement buggy verification")
+    assert(result == sat)
+    print("The result was SAT.")
+    print("This means that the post conditions of each skill does not imply the composed postcondition.")
+    print(s.model())
     print()
 
 
@@ -148,8 +159,20 @@ def verify_buggy_composition():
 # Cursor, Copilot, etc.) or from what you learned in class. What would a runtime monitor need to check to
 # prevent this class of bugs?
 
-# TODO: Write your explanation here as a comment.
-# ...
+# Write your explanation here as a comment.
+
+# Response to EXPLAIN prompt:
+# Imagine if we were using skills in a codebase, where one skill scans for security
+# vulnerabilities (maybe leaked private URLs) while the second skill constructs a
+# report file based on the findings of the first skill. Usually, such skills will
+# have an explicit filename that is desired for the report, but perhaps it does not
+# specify what should be done if a file with that name already exists. If so, there
+# is a chance that the skill overwrites a file without realizing that anything
+# undesirable has happened, but from a global perspective, our desired postcondition
+# has been violated. To mitigate this, a runtime monitor would need to be invoked
+# at every file_write and ensure that the path being written to is in that
+# particular skill's declared set of permitted paths, which in this example would be
+# that any code file is not overwritten by the report generating skill.
 # ============================================================================
 
 
