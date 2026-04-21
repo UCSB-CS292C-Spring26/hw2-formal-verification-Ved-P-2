@@ -185,7 +185,7 @@ def verify(pre: BExp, stmt: Stmt, post: BExp, label: str = "Program"):
     1. Clear side_vcs.  2. Compute wp.  3. Check pre → wp is valid.
     4. Check each side VC.  5. Print results.
 
-    TODO: Implement this function.
+    Implement this function.
     """
     global side_vcs
     side_vcs = []
@@ -294,7 +294,7 @@ def test_add():
         r := r + 1;  i := i + 1;
       { r == n + m }
 
-    TODO: Replace the invariant below with a correct one.
+    Replace the invariant below with a correct one.
     """
     pre = ImpAnd(Compare('>=', Var('n'), IntConst(0)),
                  Compare('>=', Var('m'), IntConst(0)))
@@ -332,7 +332,7 @@ def test_sum():
         s := s + i;  i := i + 1;
       { 2 * s == n * (n + 1) }
 
-    TODO: Replace the invariant below with a correct one.
+    Replace the invariant below with a correct one.
     """
     pre = Compare('>=', Var('n'), IntConst(1))
     inv = ImpAnd(
@@ -452,7 +452,7 @@ def test_buggy_div():
 def test_wp_derivation():
     """
     Part (a): Use your VCG to compute wp, then check candidate preconditions.
-    TODO: Implement after you finish Part (b).
+    Implement after you finish Part (b).
     """
     print("=== Part (a): WP Derivation ===")
 
@@ -505,7 +505,7 @@ def test_wp_derivation():
         # of these preconditions, but we have shown that if x = -1, the
         # postcondition is not satisfied.
 
-    print("  TODO: implement after Part (b)")
+    print("  implement after Part (b)")
     print()
 
 
