@@ -45,15 +45,18 @@ class SandboxMonitor:
       - State VIOLATION (rejecting): a write outside sandbox was attempted.
     Once in VIOLATION, all subsequent calls are denied.
 
-    TODO: Implement __init__ and step.
+    Implement __init__ and step.
     """
 
     def __init__(self):
-        # TODO
-        pass
+        self.rejecting = False
 
     def step(self, event: ToolEvent) -> str:
-        # TODO
+        if self.rejecting:
+            return DENY
+        if event.tool == "file_write" and not event.path.startswith(SANDBOX_DIR):
+            self.rejecting = True
+            return DENY
         return ALLOW
 
 
@@ -69,15 +72,17 @@ class ReadBeforeWriteMonitor:
     state — it only denies the specific file_write that has no prior read.
     Subsequent operations are evaluated independently.
 
-    TODO: Implement __init__ and step.
+    Implement __init__ and step.
     """
 
     def __init__(self):
-        # TODO: track which paths have been read
-        pass
+        self.read_paths = []
 
     def step(self, event: ToolEvent) -> str:
-        # TODO
+        if event.tool == "file_write" and event.path not in self.read_paths:
+            return DENY
+        if event.tool == "file_read":
+            self.read_paths.append(event.path)
         return ALLOW
 
 
@@ -91,15 +96,17 @@ class NoExfilMonitor:
       - State TAINTED: a sensitive file_read has occurred.
     In TAINTED state, network_fetch is denied.
 
-    TODO: Implement __init__ and step.
+    Implement __init__ and step.
     """
 
     def __init__(self):
-        # TODO
-        pass
+        self.tainted = False
 
     def step(self, event: ToolEvent) -> str:
-        # TODO
+        if self.tainted and event.tool == "network_fetch":
+            return DENY
+        if event.tool == "file_read" and event.is_sensitive:
+            self.tainted = True
         return ALLOW
 
 
@@ -231,7 +238,7 @@ def part_b():
     For each of the three properties, encode the NEGATION and use Z3 to
     find a violating trace (or prove none exists).
 
-    TODO: Implement the negation functions for each property.
+    Implement the negation functions for each property.
     """
     K = 8
     print(f"=== Part (b): Bounded Trace Verification (K={K}) ===\n")
@@ -241,27 +248,58 @@ def part_b():
         """
         Return constraints asserting: there EXISTS a step where
         tool = FILE_WRITE and in_sandbox = False.
-        TODO: Implement.
+        Implement.
         """
-        return []  # ← replace
+        tool = trace['tool']
+        in_sandbox = trace['in_sandbox']
+        K = trace['K']
+        return [Or(
+            [And(
+                tool[i] == FILE_WRITE, Not(in_sandbox[i])
+            ) for i in range(K)]
+        )]
 
     # Property 2: Read-before-write — every file_write at step j to path p
     # must have a file_read at some step i < j to the same path p.
     def negate_read_before_write(trace):
         """
-        TODO: Implement. This one is trickier — you need to express that
+        Implement. This one is trickier — you need to express that
         there exists a step j where tool = FILE_WRITE and for ALL i < j,
         either tool[i] != FILE_READ or path_id[i] != path_id[j].
         """
-        return []  # ← replace
+        tool = trace['tool']
+        path_id = trace['path_id']
+        K = trace['K']
+        return [Or(
+            [And(
+                tool[j] == FILE_WRITE, And(
+                    [Or(
+                        tool[i] != FILE_READ, path_id[i] != path_id[j]
+                    ) for i in range(j)]
+                )
+            ) for j in range(K)]
+        )]
 
     # Property 3: No exfiltration — if file_read at step i is sensitive,
     # then no network_fetch at any step j > i.
     def negate_no_exfil(trace):
         """
-        TODO: Implement.
+        Implement.
         """
-        return []  # ← replace
+        tool = trace['tool']
+        in_sandbox = trace['in_sandbox']
+        path_id = trace['path_id']
+        is_sensitive = trace['is_sensitive']
+        K = trace['K']
+        return [Or(
+            [And(
+                tool[j] == NETWORK_FETCH, Or(
+                    [And(
+                        tool[i] == FILE_READ, is_sensitive[i]
+                    ) for i in range(j)]
+                )
+            ) for j in range(K)]
+        )]
 
     verify_property_bounded("Sandbox", K, negate_sandbox)
     verify_property_bounded("Read-before-write", K, negate_read_before_write)
@@ -270,6 +308,29 @@ def part_b():
     # [EXPLAIN] in a comment:
     # Compare the DFA monitor approach (Part a) with the Z3 bounded approach:
     # What does each one catch that the other might miss?
+
+    # Response to the EXPLAIN prompt:
+    # DFA Monitors are great because they are very simple to build, as
+    # evidenced by how few lines of code are there in the classes. However,
+    # their major is flaw is that they must make an irrevocable decision
+    # at each and every step. Now, this is fine for the three cases that
+    # we analyzed, but you can imagine a scenario where we want to determine
+    # whether or not to deny an event based on some knowledge of what event
+    # or events will be called in the future. DFAs do not offer this
+    # functionality. On the other hand, Z3 property checking is great
+    # precisely because it can reason about a "global" trace from above.
+    # Since it analyzes the whole trace history at once, it can reason about
+    # relationships of events at a deeper level. Additionally, the Z3 solver
+    # can provide example traces where our properties are violated, which is
+    # a great resource to have. However, this "global" view is a curse as
+    # much as it is a blessing. Since Z3 needs the whole view to determine
+    # whether a violation has happened or not, it cannot make ALLOW or DENY
+    # decisions in the moment while the tool calls are actually being
+    # invoked. If you want to simulate the ability of running a Z3 property
+    # checker "online," you would basically need to run a Z3 solver on a
+    # larger array after each and every tool call, and this seems inefficient
+    # and unscalable, as opposed to DFAs which are extremely efficient and
+    # scalable.
 
 
 # ============================================================================
@@ -286,7 +347,7 @@ def part_b():
 
 def part_c():
     """
-    TODO: Construct a trace (list of ToolEvent) of length 6 that passes
+    Construct a trace (list of ToolEvent) of length 6 that passes
     the ComposedMonitor but is still dangerous.
 
     Hint: Think about what the three monitors DON'T check. For example:
@@ -297,10 +358,14 @@ def part_c():
     """
     print("=== Part (c): Monitor Completeness ===\n")
 
-    # TODO: Define your trace
+    # Define your trace
     trace = [
-        # ToolEvent(...),
-        # ...
+        ToolEvent("file_read",     "/project/secrets/api_key.txt", True), # read sensitive file
+        ToolEvent("file_read",     "/project/secrets/api_key.txt", True), # (for padding)
+        ToolEvent("file_read",     "/project/secrets/api_key.txt", True), # (for padding)
+        ToolEvent("file_read",     "/project/publish_processed_files.sh", False), # to enable writing
+        ToolEvent("file_write",    "/project/publish_processed_files.sh", False), # write a file that will send the secrets over the network
+        ToolEvent("shell_exec",    "/project/publish_processed_files.sh", False), # publish over network without network tool call
     ]
 
     cm = ComposedMonitor()
@@ -313,7 +378,28 @@ def part_c():
             all_allowed = False
 
     print(f"\n  All allowed: {all_allowed}")
+
     # [EXPLAIN] in a comment: what property does this trace violate and why?
+
+    # Response to EXPLAIN prompt:
+    # This trace violates the implicit property that no sensitive data should
+    # be sent over the network. The NoExfilMonitor does this by stopping
+    # network_fetch tool calls after sensitive data is read. However, network
+    # calls don't have to be made entirely through tool calls, they can also
+    # be made by running scripts. This trace first reads sensitive data, then
+    # reads an existing shell script, then replaces that script with one that
+    # will send this data to the external network, and lastly calls that
+    # script. Thus, sensitive data has been sent despite the existence of the
+    # monitors. Since we read the shell file before writing, the second
+    # monitor won't stop it. And since the file we write to is in /project, the
+    # first monitor won't cause an issue either. To fix this, we should add a
+    # fourth monitor that scans for network calls in shell scripts. A strong
+    # method would be that, after sensitive files are read, for any shell_exec
+    # call, the monitor must first read the shell script and confirm that it
+    # does not make any network calls before allowing. However, a less granular
+    # strategy would be to simply deny all shell execution after sensitive data
+    # is read.
+
     print()
 
 
